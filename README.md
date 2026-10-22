@@ -40,6 +40,9 @@ windows, and retains the compact navigation bar at narrower sizes.
 ## Platform differences
 
 - Floating overlay controls are intentionally disabled on Windows.
+- The app starts with the RFMonitor splash screen and keeps the navigation
+  visible on first launch, including before a server has been configured.
+- The Windows executable and taskbar icon use `assets/icon/app_icon.png`.
 - SSH terminal input uses the PC keyboard directly; arrow keys move the remote
   terminal cursor. Mobile-only shortcut rows and pinch zoom are not shown.
 - Server monitoring still uses the configured Server Agent URL. SSH and SFTP

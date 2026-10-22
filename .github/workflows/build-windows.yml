@@ -38,10 +38,14 @@ jobs:
 
       - name: Package Windows application
         run: |
-          $releaseDirectory = "build\windows\x64\runner\Release"
-          if (-not (Test-Path "$releaseDirectory\flutter_app.exe")) {
+          $releaseExecutable = Get-ChildItem -Path "build\windows" `
+            -Filter "rfmonitor.exe" -File -Recurse |
+            Where-Object { $_.FullName -match '\\Release\\' } |
+            Select-Object -First 1
+          if ($null -eq $releaseExecutable) {
             throw "Windows release executable was not produced."
           }
+          $releaseDirectory = $releaseExecutable.DirectoryName
           Compress-Archive -Path "$releaseDirectory\*" `
             -DestinationPath "build\RFMonitor-Windows-x64.zip" -Force
 
