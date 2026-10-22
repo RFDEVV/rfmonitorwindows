@@ -1,0 +1,71 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader("UTF-8") { reader -> localProperties.load(reader) }
+}
+
+def flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
+def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0.0"
+
+android {
+    namespace "com.rfproject.rfmonitor"
+    compileSdk 34
+    ndkVersion "25.1.8937393"
+
+    compileOptions {
+        // PERBAIKAN: Mengaktifkan desugaring untuk flutter_local_notifications
+        coreLibraryDesugaringEnabled true
+
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    // Legacy plugins (e.g. video_player_android) still emit Java 8 API
+    // deprecation warnings under Java 17. Don't let them fail the build.
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs << "-Xlint:-options"
+        options.deprecation = false
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+    }
+
+    defaultConfig {
+        applicationId "com.rfproject.rfmonitor"
+        // 21 so the app installs on Android 7.1/8.0 devices too (avoids
+        // INSTALL_FAILED_OLDER_SDK). The launcher icon ships both an
+        // adaptive-icon XML (API 26+) and a legacy PNG fallback so older
+        // devices still get a proper icon instead of a blank/default one.
+        minSdk 23
+        targetSdk 34
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+    }
+
+    buildTypes {
+        release {
+            // TODO: replace with your own release signing config before shipping to Play Store.
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source "../.."
+}
+
+dependencies {
+    // PERBAIKAN: Dependensi wajib untuk mendukung Core Library Desugaring
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+}

@@ -1,0 +1,65 @@
+name: rfmonitor
+description: RFPROJECT Server Monitor - Full Native Flutter monitoring & control app.
+publish_to: 'none'
+version: 1.1.0+2
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '3.22.3'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fl_chart: ^0.68.0
+  flutter_svg: ^2.0.10+1
+  http: ^1.2.1
+  web_socket_channel: ^3.0.0
+  intl: ^0.19.0
+  flutter_secure_storage: ^9.2.2
+  local_auth: ^2.2.0
+  flutter_local_notifications: ^17.2.2
+  timezone: ^0.9.4
+  video_player: ^2.9.1
+  shared_preferences: ^2.2.3
+  dartssh2: ^2.9.0
+  flutter_overlay_window: ^0.4.5
+  android_intent_plus: ^5.0.2
+  file_picker: ^8.0.7
+  path_provider: ^2.1.3
+  xterm: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+
+# KONFIGURASI APP ICON
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  # Menimpa file XML adaptive icon di mipmap-anydpi-v26/ic_launcher.xml
+  adaptive_icon_background: "#0d0f12"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+flutter:
+  uses-material-design: true
+
+  # Folder aset aplikasi
+  assets:
+    - assets/icon/
+    - assets/video/
+    - assets/images/
+    - assets/audio/
+    - assets/fonts/ # Folder pendukung font lokal jika offline
+
+  # Konfigurasi Font Lokal (Fallback/Offline Support)
+  fonts:
+    - family: Rajdhani
+      fonts:
+        - asset: assets/fonts/Rajdhani-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Rajdhani-Regular.ttf
+          weight: 600
