@@ -32,17 +32,21 @@ class _ServiceScreenState extends State<ServiceScreen>
   }
 
   Future<void> _refresh() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final list = await widget.api.getServicesList();
+      if (!mounted) return;
       setState(() => _services = list);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -243,6 +247,16 @@ class _ServiceScreenState extends State<ServiceScreen>
             ),
           ],
           const SizedBox(height: 12),
+          if (!controllable) ...[
+            Text(
+              'Kontrol dinonaktifkan oleh allowlist server agent. Tambahkan nama service pada konfigurasi ALLOWED_PM2_APPS, ALLOWED_DOCKER_CONTAINERS, atau ALLOWED_SYSTEMD_SERVICES.',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (busy)
             const Center(
                 child: SizedBox(
@@ -253,20 +267,33 @@ class _ServiceScreenState extends State<ServiceScreen>
           else
             Row(
               children: [
-                if (controllable) ...[
-                  Expanded(
-                      child: _actionBtn('Start', () => _act(item, 'start'),
-                          AppColors.neonGreen)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: _actionBtn(
-                          'Stop', () => _act(item, 'stop'), AppColors.roseRed)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: _actionBtn('Restart', () => _act(item, 'restart'),
-                          AppColors.neonCyan)),
-                  const SizedBox(width: 8),
-                ],
+                Expanded(
+                  child: _actionBtn(
+                    'Start',
+                    controllable ? () => _act(item, 'start') : null,
+                    AppColors.neonGreen,
+                    tooltip: 'Aktifkan service',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _actionBtn(
+                    'Stop',
+                    controllable ? () => _act(item, 'stop') : null,
+                    AppColors.roseRed,
+                    tooltip: 'Hentikan service',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _actionBtn(
+                    'Restart',
+                    controllable ? () => _act(item, 'restart') : null,
+                    AppColors.neonCyan,
+                    tooltip: 'Mulai ulang service',
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                     child: _actionBtn(
                         'Logs', () => _showLogs(item), AppColors.neonGold)),
@@ -280,13 +307,27 @@ class _ServiceScreenState extends State<ServiceScreen>
   Widget _metaChip(String text) => Text(text,
       style: const TextStyle(color: AppColors.textSecondary, fontSize: 11));
 
-  Widget _actionBtn(String label, VoidCallback onTap, Color color) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-          side: BorderSide(color: color.withOpacity(0.6)),
-          padding: const EdgeInsets.symmetric(vertical: 10)),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11)),
+  Widget _actionBtn(
+    String label,
+    VoidCallback? onTap,
+    Color color, {
+    String? tooltip,
+  }) {
+    return Tooltip(
+      message: onTap == null
+          ? 'Aktifkan nama service ini pada allowlist Server Agent'
+          : tooltip ?? label,
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          side:
+              BorderSide(color: color.withOpacity(onTap == null ? 0.3 : 0.75)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          minimumSize: const Size(0, 44),
+          tapTargetSize: MaterialTapTargetSize.padded,
+        ),
+        child: Text(label, style: TextStyle(color: color, fontSize: 13)),
+      ),
     );
   }
 }

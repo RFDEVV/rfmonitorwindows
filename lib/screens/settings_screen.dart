@@ -488,7 +488,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
                       Text(
-                        'Ganti file berikut lalu rebuild aplikasi untuk tampilan custom:',
+                        'File bawaan yang dikemas bersama aplikasi. Video splash dan banner dapat diganti langsung dari kontrol media di atas.',
                         style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 12,
@@ -501,7 +501,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       _AssetRow(
                         path: 'assets/video/splash_video.mp4',
-                        label: 'Splash Video',
+                        label: 'Default Splash Video',
                       ),
                       _AssetRow(
                         path: 'assets/video/banner_video.mp4',

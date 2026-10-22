@@ -21,10 +21,13 @@ class MediaPrefs {
   static const _bgPathKey = 'media_bg_path';
   static const _prayerModeKey = 'media_prayer_mode';
   static const _prayerPathKey = 'media_prayer_path';
+  static const _splashModeKey = 'media_splash_mode';
+  static const _splashPathKey = 'media_splash_path';
 
   static Future<MediaMode> _mode(String key) async {
     final v = (await SharedPreferences.getInstance()).getString(key);
-    return MediaMode.values.firstWhere((m) => m.name == v, orElse: () => MediaMode.standard);
+    return MediaMode.values
+        .firstWhere((m) => m.name == v, orElse: () => MediaMode.standard);
   }
 
   static Future<void> _setMode(String key, MediaMode m) async {
@@ -43,24 +46,36 @@ class MediaPrefs {
   static Future<String?> bgPath() => _path(_bgPathKey);
   static Future<MediaMode> prayerMode() => _mode(_prayerModeKey);
   static Future<String?> prayerPath() => _path(_prayerPathKey);
+  static Future<MediaMode> splashMode() => _mode(_splashModeKey);
+  static Future<String?> splashPath() => _path(_splashPathKey);
 
   static Future<void> setBannerMode(MediaMode m) => _setMode(_bannerModeKey, m);
   static Future<void> setBgMode(MediaMode m) => _setMode(_bgModeKey, m);
   static Future<void> setPrayerMode(MediaMode m) => _setMode(_prayerModeKey, m);
+  static Future<void> setSplashMode(MediaMode m) => _setMode(_splashModeKey, m);
 
-  static Future<bool> pickBanner() => _pick(FileType.video, 'custom_banner', _bannerPathKey, _bannerModeKey);
-  static Future<bool> pickBackground() => _pick(FileType.image, 'custom_background', _bgPathKey, _bgModeKey);
-  static Future<bool> pickPrayerBackground() => _pick(FileType.image, 'custom_prayer', _prayerPathKey, _prayerModeKey);
+  static Future<bool> pickBanner() =>
+      _pick(FileType.video, 'custom_banner', _bannerPathKey, _bannerModeKey);
+  static Future<bool> pickBackground() =>
+      _pick(FileType.image, 'custom_background', _bgPathKey, _bgModeKey);
+  static Future<bool> pickPrayerBackground() =>
+      _pick(FileType.image, 'custom_prayer', _prayerPathKey, _prayerModeKey);
+  static Future<bool> pickSplashVideo() =>
+      _pick(FileType.video, 'custom_splash', _splashPathKey, _splashModeKey);
 
-  static Future<bool> _pick(FileType type, String base, String pathKey, String modeKey) async {
-    final res = await FilePicker.platform.pickFiles(type: type, allowMultiple: false);
+  static Future<bool> _pick(
+      FileType type, String base, String pathKey, String modeKey) async {
+    final res =
+        await FilePicker.platform.pickFiles(type: type, allowMultiple: false);
     final src = res?.files.single.path;
     if (src == null) return false;
     final dir = await getApplicationDocumentsDirectory();
     final dot = src.lastIndexOf('.');
-    final ext = dot > src.lastIndexOf('/') && dot >= 0 ? src.substring(dot) : '';
+    final ext =
+        dot > src.lastIndexOf('/') && dot >= 0 ? src.substring(dot) : '';
     // nama unik per pilihan supaya cache gambar/video lama tidak ikut terpakai
-    final dest = '${dir.path}/${base}_${DateTime.now().millisecondsSinceEpoch}$ext';
+    final dest =
+        '${dir.path}/${base}_${DateTime.now().millisecondsSinceEpoch}$ext';
     await File(src).copy(dest);
 
     final prefs = await SharedPreferences.getInstance();
@@ -68,7 +83,9 @@ class MediaPrefs {
     await prefs.setString(pathKey, dest);
     await prefs.setString(modeKey, MediaMode.custom.name);
     if (old != null && old != dest) {
-      try { await File(old).delete(); } catch (_) {}
+      try {
+        await File(old).delete();
+      } catch (_) {}
     }
     changes.value++;
     return true;

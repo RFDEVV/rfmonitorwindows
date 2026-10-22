@@ -5,7 +5,7 @@ version: 1.1.0+2
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
-  flutter: '3.22.3'
+  flutter: '>=3.47.4'
 
 dependencies:
   flutter:
@@ -20,6 +20,7 @@ dependencies:
   flutter_local_notifications: ^17.2.2
   timezone: ^0.9.4
   video_player: ^2.9.1
+  video_player_win: ^3.3.1
   shared_preferences: ^2.2.3
   dartssh2: ^2.9.0
   flutter_overlay_window: ^0.4.5

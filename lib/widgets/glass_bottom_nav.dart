@@ -98,14 +98,14 @@ class GlassSideNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rail = Container(
-      width: 92,
+      width: 104,
       margin: const EdgeInsets.fromLTRB(12, 12, 0, 12),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: AppStyleKit.card(accent: AppColors.neonCyan, radius: 24),
       child: ListView.builder(
         itemCount: navItems.length,
         itemBuilder: (context, index) => SizedBox(
-          height: 66,
+          height: 72,
           child: _NavButton(
             item: navItems[index],
             selected: index == currentIndex,
@@ -179,13 +179,13 @@ class _NavButton extends StatelessWidget {
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: 40,
-              height: 30,
+              width: 44,
+              height: 34,
               alignment: Alignment.center,
               decoration: pill,
               child: SizedBox(
-                width: 20,
-                height: 20,
+                width: 22,
+                height: 22,
                 child: SvgPicture.string(item.svg,
                     colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn)),
               ),
@@ -198,7 +198,7 @@ class _NavButton extends StatelessWidget {
               softWrap: false,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 11,
                 height: 1.0,
                 color: labelColor,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,

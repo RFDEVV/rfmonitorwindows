@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../services/media_prefs.dart';
 import '../services/notification_service.dart';
 import 'home_shell.dart';
 
@@ -16,6 +17,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -24,27 +26,36 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initVideoAndBootstrap() async {
-    _initializeNotifications();
+    if (!Platform.isWindows) _initializeNotifications();
 
-    if (!Platform.isWindows) {
-      final videoController = VideoPlayerController.asset(
-        'assets/video/splash_video.mp4',
-      );
-      _videoController = videoController;
-      try {
-        await videoController.initialize().timeout(
-              const Duration(seconds: 4),
-            );
-        videoController.setLooping(false);
-        videoController.setVolume(1.0);
-
-        if (mounted) {
-          setState(() => _isVideoInitialized = true);
-          await videoController.play();
+    try {
+      final mode = await MediaPrefs.splashMode();
+      if (mode != MediaMode.off) {
+        final customPath =
+            mode == MediaMode.custom ? await MediaPrefs.splashPath() : null;
+        final controller = customPath == null
+            ? VideoPlayerController.asset('assets/video/splash_video.mp4')
+            : VideoPlayerController.file(File(customPath));
+        _videoController = controller;
+        try {
+          await controller.initialize().timeout(
+                const Duration(seconds: 4),
+              );
+          await controller.setLooping(false);
+          await controller.setVolume(1);
+          if (mounted) {
+            setState(() => _isVideoInitialized = true);
+            await controller.play();
+          }
+        } catch (error) {
+          debugPrint(
+              'Splash video unavailable; using branded fallback: $error');
+          await controller.dispose();
+          _videoController = null;
         }
-      } catch (e) {
-        debugPrint('Error loading splash video: $e');
       }
+    } catch (error) {
+      debugPrint('Could not load splash video settings: $error');
     }
 
     if (_isVideoInitialized) {
@@ -61,6 +72,13 @@ class _SplashScreenState extends State<SplashScreen> {
       await Future.delayed(const Duration(milliseconds: 700));
     }
 
+    _openHome();
+  }
+
+  void _openHome() {
+    if (!mounted || _isNavigating) return;
+    _isNavigating = true;
+    _videoController?.pause();
     if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
@@ -87,18 +105,20 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: _isVideoInitialized
-          ? SizedBox.expand(
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: _videoController!.value.size.width,
-                  height: _videoController!.value.size.height,
-                  child: VideoPlayer(_videoController!),
-                ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_isVideoInitialized)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _videoController!.value.size.width,
+                height: _videoController!.value.size.height,
+                child: VideoPlayer(_videoController!),
               ),
             )
-          : Center(
+          else
+            Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -134,6 +154,23 @@ class _SplashScreenState extends State<SplashScreen> {
                 ],
               ),
             ),
+          Positioned(
+              right: 24,
+              bottom: 24,
+              child: SafeArea(
+                child: FilledButton.icon(
+                  onPressed: _openHome,
+                  icon: const Icon(Icons.skip_next_rounded),
+                  label: const Text('Lewati'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(132, 48),
+                    backgroundColor: const Color(0xFF00BFD4),
+                    foregroundColor: Colors.black,
+                  ),
+                ),
+              )),
+        ],
+      ),
     );
   }
 }

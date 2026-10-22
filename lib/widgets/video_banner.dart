@@ -19,7 +19,7 @@ class _VideoBannerState extends State<VideoBanner> {
   VideoPlayerController? _controller;
   bool _failed = false;
   bool _off = false;
-  int _loadToken = 0;   // cegah hasil load lama menimpa load yang lebih baru
+  int _loadToken = 0; // cegah hasil load lama menimpa load yang lebih baru
 
   @override
   void initState() {
@@ -30,7 +30,14 @@ class _VideoBannerState extends State<VideoBanner> {
 
   Future<void> _load() async {
     final token = ++_loadToken;
-    final mode = await MediaPrefs.bannerMode();
+    late final MediaMode mode;
+    try {
+      mode = await MediaPrefs.bannerMode();
+    } catch (error) {
+      debugPrint('Could not load banner settings: $error');
+      if (mounted && token == _loadToken) setState(() => _failed = true);
+      return;
+    }
     final old = _controller;
     if (mounted) {
       setState(() {
@@ -42,12 +49,19 @@ class _VideoBannerState extends State<VideoBanner> {
     await old?.dispose();
     if (mode == MediaMode.off) return;
 
-    final path = mode == MediaMode.custom ? await MediaPrefs.bannerPath() : null;
+    String? path;
+    try {
+      path = mode == MediaMode.custom ? await MediaPrefs.bannerPath() : null;
+    } catch (error) {
+      debugPrint('Could not load custom banner path: $error');
+      if (mounted && token == _loadToken) setState(() => _failed = true);
+      return;
+    }
     final controller = path != null
         ? VideoPlayerController.file(File(path))
         : VideoPlayerController.asset('assets/video/banner_video.mp4');
     try {
-      await controller.initialize();
+      await controller.initialize().timeout(const Duration(seconds: 3));
       await controller.setLooping(true);
       await controller.setVolume(0);
       if (await SettingsStore().getBannerAutoplay()) await controller.play();
@@ -76,9 +90,10 @@ class _VideoBannerState extends State<VideoBanner> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        height: 140,
+        height: Platform.isWindows ? 104 : 140,
         width: double.infinity,
-        decoration: AppTheme.glassDecoration(radius: 20, glow: AppColors.neonOrange, glowStrength: 0.28),
+        decoration: AppTheme.glassDecoration(
+            radius: 20, glow: AppColors.neonOrange, glowStrength: 0.28),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -97,13 +112,20 @@ class _VideoBannerState extends State<VideoBanner> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF1A0F00), AppColors.bgBottom, Color(0xFF001A1F)],
+                    colors: [
+                      Color(0xFF1A0F00),
+                      AppColors.bgBottom,
+                      Color(0xFF001A1F)
+                    ],
                   ),
                 ),
                 child: Center(
                   child: Text(
-                    _failed ? 'RFPROJECT // RFMONITOR' : 'Loading banner…',
-                    style: AppTheme.orbitron.copyWith(color: AppColors.neonOrange, letterSpacing: 3, fontSize: 13),
+                    _failed ? 'RFMONITOR' : 'Memuat video banner…',
+                    style: AppTheme.orbitron.copyWith(
+                        color: AppColors.neonOrange,
+                        letterSpacing: 3,
+                        fontSize: 13),
                   ),
                 ),
               ),
@@ -113,7 +135,10 @@ class _VideoBannerState extends State<VideoBanner> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, AppColors.bgTop.withOpacity(0.55)],
+                  colors: [
+                    Colors.transparent,
+                    AppColors.bgTop.withOpacity(0.55)
+                  ],
                 ),
               ),
             ),

@@ -90,7 +90,7 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.rfproject" "\0"
-            VALUE "FileDescription", "RFMonitor Windows" "\0"
+            VALUE "FileDescription", "RFMonitor" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "rfmonitor" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.rfproject. All rights reserved." "\0"

@@ -9,7 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rfmonitor/main.dart';
 
 void main() {
-  testWidgets('App boots and shows the RFMonitor splash screen', (WidgetTester tester) async {
+  testWidgets(
+      'App boots and shows the RFMonitor splash screen with a skip action',
+      (WidgetTester tester) async {
     await tester.pumpWidget(const RfMonitorApp());
 
     // Splash screen renders immediately; don't pumpAndSettle here since it
@@ -17,7 +19,7 @@ void main() {
     // not mocking in this smoke test.
     await tester.pump();
 
-    expect(find.text('RFMONITOR'), findsOneWidget);
-    expect(find.text('by RFPROJECT'), findsOneWidget);
+    expect(find.text('RFMonitor'), findsOneWidget);
+    expect(find.text('Lewati'), findsOneWidget);
   });
 }

@@ -8,8 +8,7 @@ modify that source tree.
 
 Requirements:
 
-- Flutter 3.22.3 or later with Windows desktop support enabled (the minimum
-  version declared by `pubspec.yaml`)
+- Flutter 3.47.4 or later with Windows desktop support enabled
 - Visual Studio 2022 with the **Desktop development with C++** workload
 - Windows 10 or later
 
@@ -42,7 +41,16 @@ windows, and retains the compact navigation bar at narrower sizes.
 - Floating overlay controls are intentionally disabled on Windows.
 - The app starts with the RFMonitor splash screen and keeps the navigation
   visible on first launch, including before a server has been configured.
-- The Windows executable and taskbar icon use `assets/icon/app_icon.png`.
+- The splash video can be changed in Settings → media controls or skipped.
+- The Windows executable and taskbar icon use the RFMonitor logo in
+  `assets/icon/app_icon.png`.
+- File transfers show progress. Windows downloads are saved to
+  `C:\Users\<username>\Downloads\RFMonitor`.
+- The File Manager can upload files, ZIP archives, and directories over SFTP;
+  ZIP extraction prompts for an existing writable server folder.
+- Start/Stop/Restart actions are protected by the Server Agent allowlists.
+  Add permitted names to `ALLOWED_PM2_APPS`, `ALLOWED_DOCKER_CONTAINERS`, or
+  `ALLOWED_SYSTEMD_SERVICES` in the agent's `.env` before controlling them.
 - SSH terminal input uses the PC keyboard directly; arrow keys move the remote
   terminal cursor. Mobile-only shortcut rows and pinch zoom are not shown.
 - Server monitoring still uses the configured Server Agent URL. SSH and SFTP

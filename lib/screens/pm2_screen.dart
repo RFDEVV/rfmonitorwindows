@@ -27,17 +27,21 @@ class _Pm2ScreenState extends State<Pm2Screen> {
   }
 
   Future<void> _refresh() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final apps = await widget.api.getPm2List();
+      if (!mounted) return;
       setState(() => _apps = apps);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -46,16 +50,20 @@ class _Pm2ScreenState extends State<Pm2Screen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bgBottom,
-        title: Text('$action "$name"?', style: const TextStyle(color: AppColors.textPrimary)),
+        title: Text('$action "$name"?',
+            style: const TextStyle(color: AppColors.textPrimary)),
         content: Text(
           'This will run pm2 $action on $name.',
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Confirm', style: TextStyle(color: _actionColor(action))),
+            child:
+                Text('Confirm', style: TextStyle(color: _actionColor(action))),
           ),
         ],
       ),
@@ -68,10 +76,11 @@ class _Pm2ScreenState extends State<Pm2Screen> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     } finally {
-      setState(() => _busyApp = null);
+      if (mounted) setState(() => _busyApp = null);
     }
   }
 
@@ -123,17 +132,21 @@ class _Pm2ScreenState extends State<Pm2Screen> {
             color: AppColors.neonCyan,
             backgroundColor: AppColors.bgBottom,
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.neonCyan))
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.neonCyan))
                 : _error != null
                     ? ListView(
                         padding: const EdgeInsets.all(24),
                         children: [
-                          Text('Error: $_error', style: const TextStyle(color: AppColors.roseRed)),
+                          Text('Error: $_error',
+                              style: const TextStyle(color: AppColors.roseRed)),
                           const SizedBox(height: 12),
                           ElevatedButton(
                             onPressed: _refresh,
-                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.neonCyan),
-                            child: const Text('Try Again', style: TextStyle(color: Colors.black)),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.neonCyan),
+                            child: const Text('Try Again',
+                                style: TextStyle(color: Colors.black)),
                           ),
                         ],
                       )
@@ -144,7 +157,8 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                               Center(
                                 child: Text(
                                   'No PM2 processes found.',
-                                  style: TextStyle(color: AppColors.textSecondary),
+                                  style:
+                                      TextStyle(color: AppColors.textSecondary),
                                 ),
                               ),
                             ],
@@ -152,7 +166,8 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
                             itemCount: _apps.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
                             itemBuilder: (context, i) {
                               final app = _apps[i];
                               final String appName = app['name'] ?? 'Unknown';
@@ -167,7 +182,8 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                                   children: [
                                     // APP NAME & STATUS BADGE
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
                                         Expanded(
                                           child: Text(
@@ -181,11 +197,16 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                                           ),
                                         ),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: _statusColor(status).withOpacity(0.15),
-                                            borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(color: _statusColor(status).withOpacity(0.4)),
+                                            color: _statusColor(status)
+                                                .withOpacity(0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                                color: _statusColor(status)
+                                                    .withOpacity(0.4)),
                                           ),
                                           child: Text(
                                             status.toUpperCase(),
@@ -207,15 +228,28 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                                         children: [
                                           _metaChip('CPU ${app['cpu'] ?? 0}%'),
                                           const SizedBox(width: 6),
-                                          _metaChip('${app['memoryMB'] ?? 0} MB'),
+                                          _metaChip(
+                                              '${app['memoryMB'] ?? 0} MB'),
                                           const SizedBox(width: 6),
-                                          _metaChip('Up ${_uptime(app['uptimeMs'])}'),
+                                          _metaChip(
+                                              'Up ${_uptime(app['uptimeMs'])}'),
                                           const SizedBox(width: 6),
-                                          _metaChip('${app['restarts'] ?? 0} restarts'),
+                                          _metaChip(
+                                              '${app['restarts'] ?? 0} restarts'),
                                         ],
                                       ),
                                     ),
                                     const SizedBox(height: 14),
+                                    if (!controllable) ...[
+                                      const Text(
+                                        'Kontrol dikunci allowlist Server Agent. Tambahkan nama proses ke ALLOWED_PM2_APPS pada .env server.',
+                                        style: TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
 
                                     // ACTION BUTTONS / BUSY INDICATOR
                                     if (busy)
@@ -235,14 +269,33 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                                     else
                                       Row(
                                         children: [
-                                          if (controllable) ...[
-                                            Expanded(child: _actionButton('Start', 'start', appName)),
-                                            const SizedBox(width: 6),
-                                            Expanded(child: _actionButton('Stop', 'stop', appName)),
-                                            const SizedBox(width: 6),
-                                            Expanded(child: _actionButton('Restart', 'restart', appName)),
-                                            const SizedBox(width: 6),
-                                          ],
+                                          Expanded(
+                                            child: _actionButton(
+                                              'Start',
+                                              'start',
+                                              appName,
+                                              enabled: controllable,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: _actionButton(
+                                              'Stop',
+                                              'stop',
+                                              appName,
+                                              enabled: controllable,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: _actionButton(
+                                              'Restart',
+                                              'restart',
+                                              appName,
+                                              enabled: controllable,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
                                           Expanded(
                                             child: OutlinedButton(
                                               onPressed: () => showLogViewer(
@@ -252,14 +305,22 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                                                 name: appName,
                                               ),
                                               style: OutlinedButton.styleFrom(
-                                                side: BorderSide(color: AppColors.neonGold.withOpacity(0.6)),
-                                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                                side: BorderSide(
+                                                    color: AppColors.neonGold
+                                                        .withOpacity(0.6)),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 12),
                                                 minimumSize: Size.zero,
-                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                tapTargetSize:
+                                                    MaterialTapTargetSize
+                                                        .shrinkWrap,
                                               ),
                                               child: const Text(
                                                 'Logs',
-                                                style: TextStyle(color: AppColors.neonGold, fontSize: 11),
+                                                style: TextStyle(
+                                                    color: AppColors.neonGold,
+                                                    fontSize: 13),
                                               ),
                                             ),
                                           ),
@@ -291,24 +352,30 @@ class _Pm2ScreenState extends State<Pm2Screen> {
     );
   }
 
-  Widget _actionButton(String label, String action, String appName) {
+  Widget _actionButton(
+    String label,
+    String action,
+    String appName, {
+    required bool enabled,
+  }) {
     final color = _actionColor(action);
-    return OutlinedButton(
-      onPressed: () {
-        if (!_apps.any(
-          (app) => app['name'] == appName && app['controllable'] == true,
-        )) {
-          return;
-        }
-        _confirmAndRun(appName, action);
-      },
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(color: color.withOpacity(0.6)),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return Tooltip(
+      message: enabled
+          ? '$action $appName'
+          : 'Tambahkan "$appName" ke ALLOWED_PM2_APPS pada server agent',
+      child: OutlinedButton(
+        onPressed: enabled ? () => _confirmAndRun(appName, action) : null,
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: color.withOpacity(enabled ? 0.75 : 0.3)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          minimumSize: const Size(0, 44),
+          tapTargetSize: MaterialTapTargetSize.padded,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(color: color, fontSize: 13),
+        ),
       ),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11)),
     );
   }
 }

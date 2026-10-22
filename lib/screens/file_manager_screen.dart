@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dartssh2/dartssh2.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -94,6 +95,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   final _sshStore = SshStore();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _searchController = TextEditingController();
   SSHClient? _client;
   SftpClient? _sftp;
   SshProfile? _profile;
@@ -104,6 +106,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   bool _busy = false;
   String? _error;
   String _currentPath = '/';
+  bool _searchOpen = false;
+  String? _transferLabel;
+  int _transferTotalBytes = 0;
+  int _transferredBytes = 0;
+  int _lastProgressPaint = 0;
 
   @override
   void initState() {
@@ -116,6 +123,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     _client?.close();
     _usernameController.dispose();
     _passwordController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -136,8 +144,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() =>
-            _error = 'Gagal membaca kredensial SSH tersimpan: $error');
+        setState(
+            () => _error = 'Gagal membaca kredensial SSH tersimpan: $error');
       }
     }
   }
@@ -552,6 +560,180 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
   }
 
+  double? get _transferFraction => _transferTotalBytes <= 0
+      ? null
+      : (_transferredBytes / _transferTotalBytes).clamp(0.0, 1.0);
+
+  void _beginTransfer(String label, int totalBytes) {
+    setState(() {
+      _busy = true;
+      _transferLabel = label;
+      _transferTotalBytes = totalBytes;
+      _transferredBytes = 0;
+      _lastProgressPaint = 0;
+    });
+  }
+
+  void _advanceTransfer(int bytes) {
+    if (_transferLabel == null) return;
+    _transferredBytes += bytes;
+    if (_transferredBytes - _lastProgressPaint < 256 * 1024 &&
+        _transferredBytes < _transferTotalBytes) {
+      return;
+    }
+    _lastProgressPaint = _transferredBytes;
+    if (mounted) setState(() {});
+  }
+
+  void _finishTransfer() {
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _transferLabel = null;
+      _transferTotalBytes = 0;
+      _transferredBytes = 0;
+    });
+  }
+
+  Future<void> _uploadFiles() async {
+    if (_busy || !_isWritable(_currentPath)) return;
+    final selection = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+      allowMultiple: true,
+    );
+    if (selection == null) return;
+    final files = selection.files
+        .map((file) => file.path)
+        .whereType<String>()
+        .map(File.new)
+        .toList();
+    if (files.isEmpty) {
+      _showMessage('File yang dipilih tidak dapat dibaca.');
+      return;
+    }
+    try {
+      final totalBytes = await _localFilesSize(files);
+      _beginTransfer('Mengunggah ${files.length} file', totalBytes);
+      final remoteDirectory = await _safePath(_currentPath, write: true);
+      final existing = (await _sftp!.listdir(remoteDirectory))
+          .map((item) => item.filename)
+          .toSet();
+      for (final file in files) {
+        final name = _localLeaf(file.path);
+        if (existing.contains(name)) {
+          throw StateError('File "$name" sudah ada di folder tujuan.');
+        }
+        await _uploadLocalFile(
+          file,
+          await _safePath(_joinRemote(remoteDirectory, name), write: true),
+        );
+        existing.add(name);
+      }
+      await _loadDirectory(_currentPath);
+      _showMessage('Upload selesai ke $_currentPath.');
+    } catch (error) {
+      _showMessage('Gagal mengunggah file: $error');
+    } finally {
+      _finishTransfer();
+    }
+  }
+
+  Future<void> _uploadFolder() async {
+    if (_busy || !_isWritable(_currentPath)) return;
+    final folderPath = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Pilih folder yang akan diunggah',
+    );
+    if (folderPath == null) return;
+    final source = Directory(folderPath);
+    final name = _localLeaf(folderPath);
+    try {
+      setState(() {
+        _busy = true;
+        _transferLabel = 'Memindai folder $name';
+      });
+      final files = await _collectLocalFiles(source);
+      final totalBytes = await _localFilesSize(files);
+      _beginTransfer('Mengunggah folder $name', totalBytes);
+      final remoteParent = await _safePath(_currentPath, write: true);
+      final target =
+          await _safePath(_joinRemote(remoteParent, name), write: true);
+      final existing = (await _sftp!.listdir(remoteParent))
+          .map((item) => item.filename)
+          .toSet();
+      if (existing.contains(name)) {
+        throw StateError('Folder "$name" sudah ada di folder tujuan.');
+      }
+      await _uploadLocalDirectory(source, target);
+      await _loadDirectory(_currentPath);
+      _showMessage('Folder $name berhasil diunggah.');
+    } catch (error) {
+      _showMessage('Gagal mengunggah folder: $error');
+    } finally {
+      _finishTransfer();
+    }
+  }
+
+  Future<List<File>> _collectLocalFiles(Directory directory) async {
+    final files = <File>[];
+    await for (final entity
+        in directory.list(followLinks: false, recursive: true)) {
+      final type = await FileSystemEntity.type(entity.path, followLinks: false);
+      if (type == FileSystemEntityType.file) files.add(File(entity.path));
+    }
+    return files;
+  }
+
+  Future<int> _localFilesSize(List<File> files) async {
+    var total = 0;
+    for (final file in files) {
+      total += await file.length();
+    }
+    return total;
+  }
+
+  Future<void> _uploadLocalDirectory(Directory source, String target) async {
+    final sftp = _sftp!;
+    await sftp.mkdir(target);
+    await for (final entity
+        in source.list(followLinks: false, recursive: false)) {
+      final type = await FileSystemEntity.type(entity.path, followLinks: false);
+      if (type == FileSystemEntityType.directory) {
+        await _uploadLocalDirectory(
+          Directory(entity.path),
+          _joinRemote(target, _localLeaf(entity.path)),
+        );
+      } else if (type == FileSystemEntityType.file) {
+        await _uploadLocalFile(
+          File(entity.path),
+          _joinRemote(target, _localLeaf(entity.path)),
+        );
+      }
+    }
+  }
+
+  Future<void> _uploadLocalFile(File source, String remotePath) async {
+    final remote = await _sftp!.open(
+      remotePath,
+      mode: SftpFileOpenMode.write |
+          SftpFileOpenMode.create |
+          SftpFileOpenMode.exclusive,
+    );
+    var offset = 0;
+    try {
+      await for (final chunk in source.openRead()) {
+        final bytes = Uint8List.fromList(chunk);
+        await remote.writeBytes(bytes, offset: offset);
+        offset += bytes.length;
+        _advanceTransfer(bytes.length);
+      }
+    } finally {
+      await remote.close();
+    }
+  }
+
+  String _localLeaf(String path) =>
+      path.split(RegExp(r'[\\/]')).where((part) => part.isNotEmpty).last;
+
   Future<void> _showEntryActions(_RemoteEntry entry) async {
     final actions = <(String, IconData)>[
       ('Buka', Icons.open_in_new_rounded),
@@ -831,11 +1013,60 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     return result;
   }
 
+  Future<String?> _askForRemoteDirectory() async {
+    final controller = TextEditingController(text: _currentPath);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.bgBottom,
+        title: const Text(
+          'Lokasi ekstrak di server',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontFamily: 'monospace',
+          ),
+          decoration: const InputDecoration(
+            labelText: 'Path folder server',
+            helperText: 'Pilih folder tujuan yang sudah ada dan dapat ditulis.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Pilih lokasi'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
   Future<void> _unzipEntry(_RemoteEntry entry) async {
+    if (_busy) return;
+    final selectedDirectory = await _askForRemoteDirectory();
+    if (selectedDirectory == null || !mounted) return;
     try {
       final archive = await _safePath(entry.path);
-      final destination = await _safePath(_currentPath, write: true);
-      setState(() => _busy = true);
+      final destination = await _safePath(selectedDirectory, write: true);
+      final destinationAttrs =
+          await _sftp!.stat(destination, followLink: false);
+      if (!destinationAttrs.isDirectory || destinationAttrs.isSymbolicLink) {
+        throw StateError('Lokasi tujuan harus folder server yang valid.');
+      }
+      setState(() {
+        _busy = true;
+        _transferLabel = 'Mengekstrak ${_leaf(archive)}';
+      });
       final listing = await _runRemoteCommand(
         'unzip -Z1 -- ${_shellQuote(archive)}',
       );
@@ -867,12 +1098,12 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               : output,
         );
       }
-      await _loadDirectory(_currentPath);
+      if (destination == _currentPath) await _loadDirectory(_currentPath);
       _showMessage(output.isEmpty ? 'Arsip berhasil diekstrak.' : output);
     } catch (error) {
       _showMessage('Gagal mengekstrak ZIP: $error');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      _finishTransfer();
     }
   }
 
@@ -902,23 +1133,57 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   Future<void> _downloadEntry(_RemoteEntry entry) async {
-    setState(() => _busy = true);
+    if (_busy) return;
     try {
-      final root = await getApplicationDocumentsDirectory();
-      final serverDirectory = Directory(
-        '${root.path}${Platform.pathSeparator}RFMonitor Downloads${Platform.pathSeparator}${_safeLocalName(widget.config.displayName)}',
-      );
+      setState(() {
+        _busy = true;
+        _transferLabel = 'Menyiapkan unduhan ${_leaf(entry.path)}';
+      });
+      final totalBytes = await _remoteTreeSize(entry.path);
+      final serverDirectory = await _downloadsDirectory();
       await serverDirectory.create(recursive: true);
       final target = File(
         '${serverDirectory.path}${Platform.pathSeparator}${_safeLocalName(_leaf(entry.path))}',
       );
+      _beginTransfer('Mengunduh ${_leaf(entry.path)}', totalBytes);
       await _downloadRecursively(entry.path, target);
       _showMessage('Unduhan tersimpan di ${target.path}');
     } catch (error) {
       _showMessage('Gagal mengunduh file: $error');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      _finishTransfer();
     }
+  }
+
+  Future<Directory> _downloadsDirectory() async {
+    if (Platform.isWindows) {
+      final username = Platform.environment['USERNAME'];
+      if (username == null || username.isEmpty) {
+        throw StateError('Nama pengguna Windows tidak tersedia.');
+      }
+      return Directory(
+        'C:\\Users\\$username\\Downloads\\RFMonitor\\${_safeLocalName(widget.config.displayName)}',
+      );
+    }
+    final root = await getApplicationDocumentsDirectory();
+    return Directory(
+      '${root.path}${Platform.pathSeparator}RFMonitor Downloads${Platform.pathSeparator}${_safeLocalName(widget.config.displayName)}',
+    );
+  }
+
+  Future<int> _remoteTreeSize(String remote) async {
+    final safe = await _safePath(remote);
+    final attrs = await _sftp!.stat(safe, followLink: false);
+    if (attrs.isSymbolicLink) {
+      throw StateError('Unduhan symbolic link tidak didukung.');
+    }
+    if (!attrs.isDirectory) return attrs.size ?? 0;
+    var total = 0;
+    for (final entry in await _sftp!.listdir(safe)) {
+      if (entry.filename == '.' || entry.filename == '..') continue;
+      total += await _remoteTreeSize(_joinRemote(safe, entry.filename));
+    }
+    return total;
   }
 
   Future<void> _downloadRecursively(
@@ -957,7 +1222,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     );
     final sink = destination.openWrite();
     try {
-      await sink.addStream(remoteFile.read(length: length));
+      await for (final chunk in remoteFile.read(length: length)) {
+        sink.add(chunk);
+        _advanceTransfer(chunk.length);
+      }
     } finally {
       try {
         await sink.close();
@@ -1043,74 +1311,149 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         ),
         if (connected)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+            child: Column(
               children: [
-                Expanded(
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.glassBase,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.glassBorder),
-                    ),
-                    child: Text(
-                      _currentPath,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontFamily: 'monospace',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.glassBase,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.glassBorder),
+                        ),
+                        child: _searchOpen
+                            ? TextField(
+                                controller: _searchController,
+                                autofocus: true,
+                                onChanged: (_) => setState(() {}),
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                ),
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  hintText: 'Cari nama file atau folder',
+                                  border: InputBorder.none,
+                                  prefixIcon: Icon(Icons.search_rounded),
+                                ),
+                              )
+                            : Text(
+                                _currentPath,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontFamily: 'monospace',
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Salin path',
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: _currentPath));
-                    _showMessage('Path folder disalin.');
-                  },
-                  icon: const Icon(
-                    Icons.copy_rounded,
-                    color: AppColors.neonCyan,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Folder sebelumnya',
-                  onPressed: _currentPath == '/'
-                      ? null
-                      : () => _loadDirectory(_parentPath(_currentPath)),
-                  icon: const Icon(Icons.arrow_upward_rounded),
-                ),
-                IconButton(
-                  tooltip: 'Tempel',
-                  onPressed:
-                      _clipboardEntry == null || _busy ? null : _pasteEntry,
-                  icon: Icon(
-                    Icons.content_paste_rounded,
-                    color: _clipboardEntry == null
-                        ? AppColors.textSecondary
-                        : AppColors.neonGreen,
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  tooltip: 'Buat baru',
-                  onSelected: (value) =>
-                      _createItem(directory: value == 'folder'),
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'folder', child: Text('Folder baru')),
-                    PopupMenuItem(value: 'file', child: Text('File baru')),
+                    IconButton(
+                      tooltip: _searchOpen ? 'Tutup pencarian' : 'Cari file',
+                      onPressed: () {
+                        setState(() {
+                          _searchOpen = !_searchOpen;
+                          _searchController.clear();
+                        });
+                      },
+                      icon: Icon(
+                        _searchOpen
+                            ? Icons.close_rounded
+                            : Icons.search_rounded,
+                        size: 22,
+                        color: AppColors.neonCyan,
+                      ),
+                    ),
                   ],
-                  icon: const Icon(Icons.add_rounded),
                 ),
-                IconButton(
-                  tooltip: 'Muat ulang',
-                  onPressed: _busy ? null : () => _loadDirectory(_currentPath),
-                  icon: const Icon(Icons.refresh_rounded),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Folder sebelumnya',
+                        onPressed: _busy || _currentPath == '/'
+                            ? null
+                            : () => _loadDirectory(_parentPath(_currentPath)),
+                        icon: const Icon(Icons.arrow_upward_rounded, size: 22),
+                      ),
+                      IconButton(
+                        tooltip: 'Salin path',
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: _currentPath),
+                          );
+                          _showMessage('Path folder disalin.');
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 22),
+                      ),
+                      IconButton(
+                        tooltip: 'Tempel',
+                        onPressed: _clipboardEntry == null || _busy
+                            ? null
+                            : _pasteEntry,
+                        icon: Icon(
+                          Icons.content_paste_rounded,
+                          size: 22,
+                          color: _clipboardEntry == null
+                              ? AppColors.textSecondary
+                              : AppColors.neonGreen,
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Upload file atau folder',
+                        onSelected: (value) {
+                          if (value == 'files') {
+                            _uploadFiles();
+                          } else {
+                            _uploadFolder();
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'files',
+                            child: Text('Upload file / ZIP'),
+                          ),
+                          PopupMenuItem(
+                            value: 'folder',
+                            child: Text('Upload folder'),
+                          ),
+                        ],
+                        icon: const Icon(
+                          Icons.upload_rounded,
+                          size: 23,
+                          color: AppColors.neonGreen,
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Buat baru',
+                        onSelected: (value) =>
+                            _createItem(directory: value == 'folder'),
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'folder',
+                            child: Text('Folder baru'),
+                          ),
+                          PopupMenuItem(
+                              value: 'file', child: Text('File baru')),
+                        ],
+                        icon: const Icon(Icons.add_rounded, size: 23),
+                      ),
+                      IconButton(
+                        tooltip: 'Muat ulang',
+                        onPressed:
+                            _busy ? null : () => _loadDirectory(_currentPath),
+                        icon: const Icon(Icons.refresh_rounded, size: 22),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1148,64 +1491,113 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                   )
                 : RefreshIndicator(
                     onRefresh: () => _loadDirectory(_currentPath),
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 120),
-                      itemCount: _entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = _entries[index];
-                        final directory = entry.attrs.isDirectory;
-                        final symlink = entry.attrs.isSymbolicLink;
-                        return Card(
-                          color: AppColors.glassBase,
-                          child: ListTile(
-                            leading: Icon(
-                              directory
-                                  ? Icons.folder_rounded
-                                  : symlink
-                                      ? Icons.link_rounded
-                                      : Icons.insert_drive_file_rounded,
-                              color: directory
-                                  ? AppColors.neonGold
-                                  : AppColors.neonCyan,
-                            ),
-                            title: Text(
-                              entry.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            subtitle: Text(
-                              directory
-                                  ? 'Folder'
-                                  : '${_formatSize(entry.attrs.size)}${_isWritable(entry.path) ? '' : ' · hanya baca'}',
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 11,
-                              ),
-                            ),
-                            onTap: () => _openEntry(entry),
-                            onLongPress: () => _showEntryActions(entry),
-                            trailing: IconButton(
-                              tooltip: 'Menu file',
-                              onPressed: () => _showEntryActions(entry),
-                              icon: const Icon(
-                                Icons.more_vert_rounded,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
+                    child: Builder(
+                      builder: (context) {
+                        final query =
+                            _searchController.text.trim().toLowerCase();
+                        final visibleEntries = _entries
+                            .where((entry) =>
+                                query.isEmpty ||
+                                entry.name.toLowerCase().contains(query))
+                            .toList();
+                        return ListView.builder(
+                          padding: EdgeInsets.fromLTRB(
+                            12,
+                            4,
+                            12,
+                            Platform.isWindows ? 24 : 120,
                           ),
+                          itemCount: visibleEntries.length,
+                          itemBuilder: (context, index) {
+                            final entry = visibleEntries[index];
+                            final directory = entry.attrs.isDirectory;
+                            final symlink = entry.attrs.isSymbolicLink;
+                            return Card(
+                              color: AppColors.glassBase,
+                              child: ListTile(
+                                leading: Icon(
+                                  directory
+                                      ? Icons.folder_rounded
+                                      : symlink
+                                          ? Icons.link_rounded
+                                          : Icons.insert_drive_file_rounded,
+                                  color: directory
+                                      ? AppColors.neonGold
+                                      : AppColors.neonCyan,
+                                ),
+                                title: Text(
+                                  entry.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  directory
+                                      ? 'Folder'
+                                      : '${_formatSize(entry.attrs.size)}${_isWritable(entry.path) ? '' : ' · hanya baca'}',
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                onTap: () => _openEntry(entry),
+                                onLongPress: () => _showEntryActions(entry),
+                                trailing: IconButton(
+                                  tooltip: 'Menu file',
+                                  onPressed: () => _showEntryActions(entry),
+                                  icon: const Icon(
+                                    Icons.more_vert_rounded,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
                   ),
           ),
-        if (_busy)
-          const LinearProgressIndicator(
-            minHeight: 2,
+        if (_busy) ...[
+          if (_transferLabel != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _transferLabel!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _transferFraction == null
+                        ? 'Menyiapkan…'
+                        : '${(_transferFraction! * 100).round()}%',
+                    style: const TextStyle(
+                      color: AppColors.neonCyan,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          LinearProgressIndicator(
+            value: _transferFraction,
+            minHeight: 4,
             color: AppColors.neonCyan,
+            backgroundColor: AppColors.glassBorder,
           ),
+        ],
       ],
     );
   }
