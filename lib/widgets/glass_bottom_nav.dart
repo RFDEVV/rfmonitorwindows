@@ -98,9 +98,9 @@ class GlassSideNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rail = Container(
-      width: 104,
-      margin: const EdgeInsets.fromLTRB(12, 12, 0, 12),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      width: 84,
+      margin: const EdgeInsets.fromLTRB(8, 12, 0, 12),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
       decoration: AppStyleKit.card(accent: AppColors.neonCyan, radius: 24),
       child: ListView.builder(
         itemCount: navItems.length,

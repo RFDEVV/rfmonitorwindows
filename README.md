@@ -21,7 +21,7 @@ flutter pub get
 flutter run -d windows
 ```
 
-To create a release package:
+To create a release build:
 
 ```powershell
 flutter build windows --release
@@ -29,8 +29,10 @@ flutter build windows --release
 
 The GitHub Actions workflow in `.github/workflows/build-windows.yml` builds the
 Windows release on pushes to `main` or `master`, or when started manually. It
-uploads a `RFMonitor-Windows-x64` artifact containing the complete portable
-application folder as a ZIP.
+packages the complete Flutter application (including its required runtime
+files) into one installer executable and uploads it as the
+`RFMonitor-Windows-x64` artifact. Users can install RFMonitor from that single
+`.exe`; Flutter's runtime files are installed alongside the app.
 
 The desktop window supports normal Windows resize, minimize, maximize, and
 restore actions. The app switches to a vertical navigation rail on wide
@@ -57,4 +59,6 @@ windows, and retains the compact navigation bar at narrower sizes.
   remain direct connections to the selected host.
 
 This copy shares the Flutter package configuration with the mobile project.
-The workflow produces a portable ZIP, not an installer.
+The workflow produces a single-file installer executable, not a standalone
+application binary. Flutter desktop applications require runtime DLLs and
+asset files, which the installer places in the installation folder.

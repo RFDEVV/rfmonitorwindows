@@ -40,6 +40,32 @@ const _macTerminalTheme = TerminalTheme(
   searchHitForeground: Color(0xFF000000),
 );
 
+const _windowsTerminalTheme = TerminalTheme(
+  cursor: Color(0xFFCCCCCC),
+  selection: Color(0x663A96DD),
+  foreground: Color(0xFFCCCCCC),
+  background: Color(0xFF0C0C0C),
+  black: Color(0xFF0C0C0C),
+  red: Color(0xFFC50F1F),
+  green: Color(0xFF13A10E),
+  yellow: Color(0xFFC19C00),
+  blue: Color(0xFF0037DA),
+  magenta: Color(0xFF881798),
+  cyan: Color(0xFF3A96DD),
+  white: Color(0xFFCCCCCC),
+  brightBlack: Color(0xFF767676),
+  brightRed: Color(0xFFE74856),
+  brightGreen: Color(0xFF16C60C),
+  brightYellow: Color(0xFFF9F1A5),
+  brightBlue: Color(0xFF3B78FF),
+  brightMagenta: Color(0xFFB4009E),
+  brightCyan: Color(0xFF61D6D6),
+  brightWhite: Color(0xFFF2F2F2),
+  searchHitBackground: Color(0xFFFFFF2B),
+  searchHitBackgroundCurrent: Color(0xFF31FF26),
+  searchHitForeground: Color(0xFF000000),
+);
+
 /// Terminal SSH ASLI (protokol SSH2, langsung dari HP ke server — bukan lewat
 /// agent). Emulator terminal penuh (xterm): vim/nano/htop/top jalan normal.
 ///  - Tampilan ala Terminal macOS (tombol merah/kuning/hijau)
@@ -268,7 +294,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _key.dispose();
     _passphrase.dispose();
     _zoomCtrl.dispose();
-    if (!widget.embedded) {
+    if (!widget.embedded && !Platform.isWindows) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     }
@@ -527,16 +553,23 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   Widget _terminalView() {
     final desktop = Platform.isWindows;
-    final terminal = TerminalView(
-      _terminal,
-      controller: _termController,
-      theme: _macTerminalTheme,
-      textStyle: TerminalStyle(fontSize: desktop ? 13 : _fontSize),
-      cursorType: TerminalCursorType.block,
-      alwaysShowCursor: true,
-      deleteDetection: true,
-      autofocus: true,
-      padding: const EdgeInsets.all(8),
+    final terminal = LayoutBuilder(
+      builder: (context, constraints) {
+        final fontSize =
+            desktop ? (constraints.maxWidth < 620 ? 11.0 : 13.0) : _fontSize;
+        return TerminalView(
+          _terminal,
+          controller: _termController,
+          theme: desktop ? _windowsTerminalTheme : _macTerminalTheme,
+          textStyle: TerminalStyle(fontSize: fontSize),
+          cursorType: TerminalCursorType.block,
+          alwaysShowCursor: !desktop,
+          hardwareKeyboardOnly: desktop,
+          deleteDetection: true,
+          autofocus: true,
+          padding: const EdgeInsets.all(8),
+        );
+      },
     );
     final viewport = desktop
         ? terminal
@@ -574,14 +607,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Widget _desktopTerminalHeader() => Container(
         height: 36,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        color: const Color(0xFF202124),
+        color: const Color(0xFF1F1F1F),
         child: Row(
           children: [
-            const Icon(Icons.circle, color: Color(0xFF28C840), size: 10),
+            const Icon(
+              Icons.terminal_rounded,
+              color: Color(0xFFCCCCCC),
+              size: 17,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                _title,
+                'SSH  $_title',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(

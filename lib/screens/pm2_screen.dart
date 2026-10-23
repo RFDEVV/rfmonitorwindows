@@ -26,10 +26,10 @@ class _Pm2ScreenState extends State<Pm2Screen> {
     _refresh();
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool showLoading = true}) async {
     if (mounted) {
       setState(() {
-        _loading = true;
+        if (showLoading) _loading = true;
         _error = null;
       });
     }
@@ -41,11 +41,12 @@ class _Pm2ScreenState extends State<Pm2Screen> {
       if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && showLoading) setState(() => _loading = false);
     }
   }
 
   Future<void> _confirmAndRun(String name, String action) async {
+    if (_busyApp != null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -73,11 +74,20 @@ class _Pm2ScreenState extends State<Pm2Screen> {
     setState(() => _busyApp = name);
     try {
       await widget.api.pm2Action(name, action);
-      await _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Perintah PM2 $action untuk $name diterima Server Agent.',
+            ),
+          ),
+        );
+      }
+      await _refresh(showLoading: false);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text('Perintah PM2 gagal: $e')));
       }
     } finally {
       if (mounted) setState(() => _busyApp = null);
@@ -222,27 +232,22 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                                     const SizedBox(height: 10),
 
                                     // METRIC CHIPS (SingleChildScrollView agar tidak overflow)
-                                    SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: Row(
-                                        children: [
-                                          _metaChip('CPU ${app['cpu'] ?? 0}%'),
-                                          const SizedBox(width: 6),
-                                          _metaChip(
-                                              '${app['memoryMB'] ?? 0} MB'),
-                                          const SizedBox(width: 6),
-                                          _metaChip(
-                                              'Up ${_uptime(app['uptimeMs'])}'),
-                                          const SizedBox(width: 6),
-                                          _metaChip(
-                                              '${app['restarts'] ?? 0} restarts'),
-                                        ],
-                                      ),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: [
+                                        _metaChip('CPU ${app['cpu'] ?? 0}%'),
+                                        _metaChip('${app['memoryMB'] ?? 0} MB'),
+                                        _metaChip(
+                                            'Up ${_uptime(app['uptimeMs'])}'),
+                                        _metaChip(
+                                            '${app['restarts'] ?? 0} restarts'),
+                                      ],
                                     ),
                                     const SizedBox(height: 14),
                                     if (!controllable) ...[
                                       const Text(
-                                        'Kontrol dikunci allowlist Server Agent. Tambahkan nama proses ke ALLOWED_PM2_APPS pada .env server.',
+                                        'Status allowlist dari daftar belum mengizinkan kontrol. Permintaan tetap dikirim ke Server Agent agar izin terbaru diperiksa; alasan penolakan akan ditampilkan.',
                                         style: TextStyle(
                                           color: AppColors.textSecondary,
                                           fontSize: 11,
@@ -267,64 +272,76 @@ class _Pm2ScreenState extends State<Pm2Screen> {
                                         ),
                                       )
                                     else
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: _actionButton(
-                                              'Start',
-                                              'start',
-                                              appName,
-                                              enabled: controllable,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: _actionButton(
-                                              'Stop',
-                                              'stop',
-                                              appName,
-                                              enabled: controllable,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: _actionButton(
-                                              'Restart',
-                                              'restart',
-                                              appName,
-                                              enabled: controllable,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: OutlinedButton(
-                                              onPressed: () => showLogViewer(
-                                                context,
-                                                api: widget.api,
-                                                type: 'pm2',
-                                                name: appName,
+                                      LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final columns =
+                                              constraints.maxWidth < 480
+                                                  ? 2
+                                                  : 4;
+                                          final buttonWidth =
+                                              (constraints.maxWidth -
+                                                      8 * (columns - 1)) /
+                                                  columns;
+                                          return Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              SizedBox(
+                                                width: buttonWidth,
+                                                child: _actionButton(
+                                                  'Start',
+                                                  'start',
+                                                  appName,
+                                                ),
                                               ),
-                                              style: OutlinedButton.styleFrom(
-                                                side: BorderSide(
-                                                    color: AppColors.neonGold
-                                                        .withOpacity(0.6)),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        vertical: 12),
-                                                minimumSize: Size.zero,
-                                                tapTargetSize:
-                                                    MaterialTapTargetSize
-                                                        .shrinkWrap,
+                                              SizedBox(
+                                                width: buttonWidth,
+                                                child: _actionButton(
+                                                  'Stop',
+                                                  'stop',
+                                                  appName,
+                                                ),
                                               ),
-                                              child: const Text(
-                                                'Logs',
-                                                style: TextStyle(
-                                                    color: AppColors.neonGold,
-                                                    fontSize: 13),
+                                              SizedBox(
+                                                width: buttonWidth,
+                                                child: _actionButton(
+                                                  'Restart',
+                                                  'restart',
+                                                  appName,
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                        ],
+                                              SizedBox(
+                                                width: buttonWidth,
+                                                child: OutlinedButton(
+                                                  onPressed: _busyApp == null
+                                                      ? () => showLogViewer(
+                                                            context,
+                                                            api: widget.api,
+                                                            type: 'pm2',
+                                                            name: appName,
+                                                          )
+                                                      : null,
+                                                  style:
+                                                      OutlinedButton.styleFrom(
+                                                    side: BorderSide(
+                                                      color: AppColors.neonGold
+                                                          .withOpacity(0.6),
+                                                    ),
+                                                    minimumSize:
+                                                        const Size(0, 44),
+                                                  ),
+                                                  child: const Text(
+                                                    'Logs',
+                                                    style: TextStyle(
+                                                      color: AppColors.neonGold,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        },
                                       ),
                                   ],
                                 ),
@@ -355,18 +372,19 @@ class _Pm2ScreenState extends State<Pm2Screen> {
   Widget _actionButton(
     String label,
     String action,
-    String appName, {
-    required bool enabled,
-  }) {
+    String appName,
+  ) {
     final color = _actionColor(action);
     return Tooltip(
-      message: enabled
+      message: _busyApp == null
           ? '$action $appName'
-          : 'Tambahkan "$appName" ke ALLOWED_PM2_APPS pada server agent',
+          : 'Tunggu aksi yang sedang berjalan selesai',
       child: OutlinedButton(
-        onPressed: enabled ? () => _confirmAndRun(appName, action) : null,
+        onPressed:
+            _busyApp == null ? () => _confirmAndRun(appName, action) : null,
         style: OutlinedButton.styleFrom(
-          side: BorderSide(color: color.withOpacity(enabled ? 0.75 : 0.3)),
+          side: BorderSide(
+              color: color.withOpacity(_busyApp == null ? 0.75 : 0.3)),
           padding: const EdgeInsets.symmetric(vertical: 12),
           minimumSize: const Size(0, 44),
           tapTargetSize: MaterialTapTargetSize.padded,

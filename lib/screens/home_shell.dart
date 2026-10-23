@@ -345,7 +345,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     return LayoutBuilder(
       builder: (context, constraints) {
         final useSideNavigation =
-            Platform.isWindows && constraints.maxWidth >= 760;
+            Platform.isWindows && constraints.maxWidth >= 900;
+        final content = Platform.isWindows
+            ? Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1320),
+                  child: screen,
+                ),
+              )
+            : screen;
         return Scaffold(
           extendBody: !useSideNavigation,
           body: Row(
@@ -357,7 +365,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 ),
               Expanded(
                 child: CyberBackground(
-                  child: SafeArea(child: screen),
+                  child: SafeArea(child: content),
                 ),
               ),
             ],

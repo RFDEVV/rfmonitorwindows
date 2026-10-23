@@ -36,7 +36,15 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release
 
-      - name: Package Windows application
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress --yes
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup installation failed."
+          }
+
+      - name: Prepare installer payload
+        shell: pwsh
         run: |
           $releaseExecutable = Get-ChildItem -Path "build\windows" `
             -Filter "rfmonitor.exe" -File -Recurse |
@@ -46,13 +54,24 @@ jobs:
             throw "Windows release executable was not produced."
           }
           $releaseDirectory = $releaseExecutable.DirectoryName
-          Compress-Archive -Path "$releaseDirectory\*" `
-            -DestinationPath "build\RFMonitor-Windows-x64.zip" -Force
+          $payloadDirectory = "build\installer\payload"
+          New-Item -ItemType Directory -Path $payloadDirectory -Force | Out-Null
+          Copy-Item -Path "$releaseDirectory\*" -Destination $payloadDirectory `
+            -Recurse -Force
+
+          $installerCompiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $installerCompiler)) {
+            throw "Inno Setup compiler was not found at $installerCompiler."
+          }
+          & $installerCompiler "installer\RFMonitor.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "RFMonitor installer compilation failed."
+          }
 
       - name: Upload Windows release
         uses: actions/upload-artifact@v4
         with:
           name: RFMonitor-Windows-x64
-          path: build/RFMonitor-Windows-x64.zip
+          path: build/RFMonitor-Setup-x64.exe
           if-no-files-found: error
           retention-days: 14

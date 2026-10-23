@@ -31,10 +31,10 @@ class _ServiceScreenState extends State<ServiceScreen>
     _refresh();
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool showLoading = true}) async {
     if (mounted) {
       setState(() {
-        _loading = true;
+        if (showLoading) _loading = true;
         _error = null;
       });
     }
@@ -46,21 +46,32 @@ class _ServiceScreenState extends State<ServiceScreen>
       if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && showLoading) setState(() => _loading = false);
     }
   }
 
   Future<void> _act(Map item, String action) async {
-    if (item['controllable'] != true) return;
+    if (_busyKey != null) return;
     final key = '${item['type']}:${item['name']}';
     setState(() => _busyKey = key);
     try {
       await widget.api.serviceAction(item['type'], item['name'], action);
-      await _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Perintah $action untuk ${item['name']} diterima Server Agent.',
+            ),
+          ),
+        );
+      }
+      await _refresh(showLoading: false);
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Perintah service gagal: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busyKey = null);
     }
@@ -113,16 +124,18 @@ class _ServiceScreenState extends State<ServiceScreen>
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Row(
-              children: [
-                Expanded(child: _filterChip('All', 'all')),
-                const SizedBox(width: 8),
-                Expanded(child: _filterChip('PM2', 'pm2')),
-                const SizedBox(width: 8),
-                Expanded(child: _filterChip('Docker', 'docker')),
-                const SizedBox(width: 8),
-                Expanded(child: _filterChip('systemd', 'systemd')),
-              ],
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _filterChip('All', 'all'),
+                  _filterChip('PM2', 'pm2'),
+                  _filterChip('Docker', 'docker'),
+                  _filterChip('systemd', 'systemd'),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -162,7 +175,7 @@ class _ServiceScreenState extends State<ServiceScreen>
     return GestureDetector(
       onTap: () => setState(() => _filter = value),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected
@@ -231,25 +244,23 @@ class _ServiceScreenState extends State<ServiceScreen>
           ],
           if (item['cpuPercent'] != null || item['memoryMB'] != null) ...[
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 if (item['cpuPercent'] != null)
                   _metaChip('CPU ${item['cpuPercent']}%'),
-                if (item['memoryMB'] != null) ...[
-                  const SizedBox(width: 8),
-                  _metaChip('${item['memoryMB']} MB')
-                ],
-                if (item['restarts'] != null) ...[
-                  const SizedBox(width: 8),
-                  _metaChip('${item['restarts']} restarts')
-                ],
+                if (item['memoryMB'] != null)
+                  _metaChip('${item['memoryMB']} MB'),
+                if (item['restarts'] != null)
+                  _metaChip('${item['restarts']} restarts'),
               ],
             ),
           ],
           const SizedBox(height: 12),
           if (!controllable) ...[
             Text(
-              'Kontrol dinonaktifkan oleh allowlist server agent. Tambahkan nama service pada konfigurasi ALLOWED_PM2_APPS, ALLOWED_DOCKER_CONTAINERS, atau ALLOWED_SYSTEMD_SERVICES.',
+              'Status allowlist dari daftar belum mengizinkan kontrol. Permintaan tetap dikirim ke Server Agent agar izin terbaru diperiksa; alasan penolakan akan ditampilkan.',
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 11,
@@ -265,39 +276,53 @@ class _ServiceScreenState extends State<ServiceScreen>
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: AppColors.neonCyan)))
           else
-            Row(
-              children: [
-                Expanded(
-                  child: _actionBtn(
-                    'Start',
-                    controllable ? () => _act(item, 'start') : null,
-                    AppColors.neonGreen,
-                    tooltip: 'Aktifkan service',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _actionBtn(
-                    'Stop',
-                    controllable ? () => _act(item, 'stop') : null,
-                    AppColors.roseRed,
-                    tooltip: 'Hentikan service',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _actionBtn(
-                    'Restart',
-                    controllable ? () => _act(item, 'restart') : null,
-                    AppColors.neonCyan,
-                    tooltip: 'Mulai ulang service',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                    child: _actionBtn(
-                        'Logs', () => _showLogs(item), AppColors.neonGold)),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth < 480 ? 2 : 4;
+                final buttonWidth =
+                    (constraints.maxWidth - 8 * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    SizedBox(
+                      width: buttonWidth,
+                      child: _actionBtn(
+                        'Start',
+                        () => _act(item, 'start'),
+                        AppColors.neonGreen,
+                        tooltip: 'Aktifkan service',
+                      ),
+                    ),
+                    SizedBox(
+                      width: buttonWidth,
+                      child: _actionBtn(
+                        'Stop',
+                        () => _act(item, 'stop'),
+                        AppColors.roseRed,
+                        tooltip: 'Hentikan service',
+                      ),
+                    ),
+                    SizedBox(
+                      width: buttonWidth,
+                      child: _actionBtn(
+                        'Restart',
+                        () => _act(item, 'restart'),
+                        AppColors.neonCyan,
+                        tooltip: 'Mulai ulang service',
+                      ),
+                    ),
+                    SizedBox(
+                      width: buttonWidth,
+                      child: _actionBtn(
+                        'Logs',
+                        () => _showLogs(item),
+                        AppColors.neonGold,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
         ],
       ),
@@ -313,15 +338,17 @@ class _ServiceScreenState extends State<ServiceScreen>
     Color color, {
     String? tooltip,
   }) {
+    final actionInProgress = _busyKey != null;
+    final effectiveOnTap = actionInProgress ? null : onTap;
     return Tooltip(
-      message: onTap == null
-          ? 'Aktifkan nama service ini pada allowlist Server Agent'
+      message: actionInProgress
+          ? 'Tunggu aksi yang sedang berjalan selesai'
           : tooltip ?? label,
       child: OutlinedButton(
-        onPressed: onTap,
+        onPressed: effectiveOnTap,
         style: OutlinedButton.styleFrom(
-          side:
-              BorderSide(color: color.withOpacity(onTap == null ? 0.3 : 0.75)),
+          side: BorderSide(
+              color: color.withOpacity(effectiveOnTap == null ? 0.3 : 0.75)),
           padding: const EdgeInsets.symmetric(vertical: 12),
           minimumSize: const Size(0, 44),
           tapTargetSize: MaterialTapTargetSize.padded,
